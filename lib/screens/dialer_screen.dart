@@ -92,7 +92,11 @@ class _DialerScreenState extends State<DialerScreen> {
     }
   }
 
-  Future<void> _makeCall() async {
+  Future<void> _makeCall({String? number}) async {
+    if (number != null) {
+      _phoneNumber = number;
+    }
+
     if (_phoneNumber.isNotEmpty) {
       _sipService.makeCall(_phoneNumber);
 
@@ -325,7 +329,10 @@ class _DialerScreenState extends State<DialerScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => RecentCallsScreen(recentCalls: _recentCalls),
+        builder: (context) => RecentCallsScreen(
+          recentCalls: _recentCalls,
+          onCall: _makeCall,
+        ),
       ),
     );
   }
@@ -333,9 +340,13 @@ class _DialerScreenState extends State<DialerScreen> {
 
 class RecentCallsScreen extends StatelessWidget {
   final List<RecentCall> recentCalls;
+  final Function({required String number}) onCall;
 
-  const RecentCallsScreen({Key? key, required this.recentCalls})
-      : super(key: key);
+  const RecentCallsScreen({
+    Key? key,
+    required this.recentCalls,
+    required this.onCall,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -349,6 +360,10 @@ class RecentCallsScreen extends StatelessWidget {
           return ListTile(
             title: Text(recentCalls[index].phoneNumber),
             subtitle: Text('Date: ${recentCalls[index].timestamp.toString()}'),
+            onTap: () {
+              onCall(number: recentCalls[index].phoneNumber);
+              Navigator.pop(context);
+            },
           );
         },
       ),
