@@ -4,6 +4,32 @@ import '../widgets/call_button.dart';
 import '../services/sip_service.dart';
 import 'call_screen.dart';
 import 'contact_list_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+
+class RecentCall {
+  final String phoneNumber;
+  final DateTime timestamp;
+
+  RecentCall({
+    required this.phoneNumber,
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'phoneNumber': phoneNumber,
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
+
+  factory RecentCall.fromJson(Map<String, dynamic> json) {
+    return RecentCall(
+      phoneNumber: json['phoneNumber'],
+      timestamp: DateTime.parse(json['timestamp']),
+    );
+  }
+}
 
 class DialerScreen extends StatefulWidget {
   @override
@@ -16,12 +42,14 @@ class _DialerScreenState extends State<DialerScreen> {
   final SipService _sipService = SipService();
   late TextEditingController _phoneController;
   final FocusNode _focusNode = FocusNode();
+  List<RecentCall> _recentCalls = [];
 
   @override
   void initState() {
     super.initState();
     _sipService.initialize();
     _phoneController = TextEditingController(text: _phoneNumber);
+    _loadRecentCalls();
   }
 
   @override
@@ -64,15 +92,52 @@ class _DialerScreenState extends State<DialerScreen> {
     }
   }
 
-  void _makeCall() {
+  Future<void> _makeCall() async {
     if (_phoneNumber.isNotEmpty) {
       _sipService.makeCall(_phoneNumber);
+
+      // Crear un nuevo objeto RecentCall
+      RecentCall newCall = RecentCall(
+        phoneNumber: _phoneNumber,
+        timestamp: DateTime.now(),
+      );
+
+      // Insertar al inicio de la lista
+      setState(() {
+        _recentCalls.insert(0, newCall);
+      });
+
+      // Guardar en shared_preferences
+      await _saveRecentCalls();
+
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => CallScreen(phoneNumber: _phoneNumber),
         ),
       );
+    }
+  }
+
+  Future<void> _saveRecentCalls() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String> recentCallsJson =
+        _recentCalls.map((call) => jsonEncode(call.toJson())).toList();
+    await prefs.setStringList('recentCalls', recentCallsJson);
+  }
+
+  Future<void> _loadRecentCalls() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? recentCallsJson = prefs.getStringList('recentCalls');
+
+    if (recentCallsJson != null) {
+      setState(() {
+        _recentCalls = recentCallsJson
+            .map((jsonString) => RecentCall.fromJson(
+                  jsonDecode(jsonString),
+                ))
+            .toList();
+      });
     }
   }
 
@@ -229,10 +294,11 @@ class _DialerScreenState extends State<DialerScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _buildNavItem(Icons.star, 'Favorites'),
-          _buildNavItem(Icons.access_time, 'Recents'),
-          _buildNavItem(Icons.contacts, 'Contacts', onTap: _openContacts),
-          _buildNavItem(Icons.dialpad, 'Keypad', isSelected: true),
+          _buildNavItem(Icons.star, 'Favoritos'),
+          _buildNavItem(Icons.access_time, 'Recientes',
+              onTap: _showRecentCalls),
+          _buildNavItem(Icons.contacts, 'Contactos', onTap: _openContacts),
+          _buildNavItem(Icons.dialpad, 'Teclado', isSelected: true),
           //_buildNavItem(Icons.voicemail, 'Voicemail'),
         ],
       ),
@@ -251,6 +317,40 @@ class _DialerScreenState extends State<DialerScreen> {
               style: TextStyle(
                   color: isSelected ? Colors.blue : Colors.grey, fontSize: 12)),
         ],
+      ),
+    );
+  }
+
+  void _showRecentCalls() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecentCallsScreen(recentCalls: _recentCalls),
+      ),
+    );
+  }
+}
+
+class RecentCallsScreen extends StatelessWidget {
+  final List<RecentCall> recentCalls;
+
+  const RecentCallsScreen({Key? key, required this.recentCalls})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Recent Calls'),
+      ),
+      body: ListView.builder(
+        itemCount: recentCalls.length,
+        itemBuilder: (context, index) {
+          return ListTile(
+            title: Text(recentCalls[index].phoneNumber),
+            subtitle: Text('Date: ${recentCalls[index].timestamp.toString()}'),
+          );
+        },
       ),
     );
   }
